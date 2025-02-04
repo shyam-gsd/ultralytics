@@ -88,6 +88,14 @@ from .transformer import (
     TransformerLayer,
 )
 
+from .quant_modules import (
+    QuantConv,
+    Uint8ActPerTensorPoT,
+    Int8ActPerTensorPoT,
+    Int8WeightPerChannelPoT,
+)
+
+
 __all__ = (
     "Conv",
     "Conv2",
@@ -160,4 +168,8 @@ __all__ = (
     "PSA",
     "TorchVision",
     "Index",
+    "QuantConv",
+    "Uint8ActPerTensorPoT",
+    "Int8ActPerTensorPoT",
+    "Int8WeightPerChannelPoT",
 )

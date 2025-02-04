@@ -64,6 +64,10 @@ from ultralytics.nn.modules import (
     TorchVision,
     WorldDetect,
     v10Detect,
+    QuantConv,
+    Int8ActPerTensorPoT,
+    Int8WeightPerChannelPoT,
+    Uint8ActPerTensorPoT,
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, yaml_load
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -86,6 +90,9 @@ from ultralytics.utils.torch_utils import (
     scale_img,
     time_sync,
 )
+
+import brevitas.nn as qnn
+
 
 
 class BaseModel(nn.Module):
@@ -989,6 +996,8 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
             PSA,
             SCDown,
             C2fCIB,
+
+            QuantConv,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments
@@ -1009,9 +1018,11 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
             C2PSA,
         }
     )
-    for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
+    for i, (f, n, m, args, kwargs) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
         m = (
-            getattr(torch.nn, m[3:])
+            getattr(qnn, m[4:])
+            if "qnn." in m
+            else getattr(torch.nn, m[3:])
             if "nn." in m
             else getattr(__import__("torchvision").ops, m[16:])
             if "torchvision.ops." in m
@@ -1073,7 +1084,14 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         else:
             c2 = ch[f]
 
-        m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
+        if m in {QuantConv}:
+            for k in ["weight_quant", "act_quant", "bias_quant", "output_quant","input_quant"]:
+                if k in kwargs:
+                    kwargs[k] = globals()[kwargs[k]] if isinstance(kwargs[k], str) else kwargs[k]
+        if len(args) == 0:
+            m_ = nn.Sequential(*(m(**kwargs) for _ in range(n))) if n > 1 else m(**kwargs)  # module
+        else:
+            m_ = nn.Sequential(*(m(*args,**kwargs) for _ in range(n))) if n > 1 else m(*args,**kwargs)  # module
         t = str(m)[8:-2].replace("__main__.", "")  # module type
         m_.np = sum(x.numel() for x in m_.parameters())  # number params
         m_.i, m_.f, m_.type = i, f, t  # attach index, 'from' index, type
