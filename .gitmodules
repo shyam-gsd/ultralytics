@@ -1,3 +1,4 @@
 [submodule "brevitas"]
 	path = brevitas
 	url = https://github.com/shyam-gsd/brevitas.git
+	branch = cfc-work
