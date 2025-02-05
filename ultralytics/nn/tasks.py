@@ -68,6 +68,18 @@ from ultralytics.nn.modules import (
     Int8ActPerTensorPoT,
     Int8WeightPerChannelPoT,
     Uint8ActPerTensorPoT,
+    QuantDetect,
+    QPSABlock,
+    QDWConv,
+    QC3k2,
+    QC2PSA,
+    QuantSPPF,
+    QuantAttention,
+    QuantBottleneck,
+    QC3k,
+    QuantDFL,
+    QC2f,
+    QC3,
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, yaml_load
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -998,6 +1010,13 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
             C2fCIB,
 
             QuantConv,
+            QuantSPPF,
+            QDWConv,
+            QuantBottleneck,
+            QC2PSA,
+            QC2f,
+            QC3k2,
+            QC2PSA,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments
@@ -1016,6 +1035,10 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
             C2fPSA,
             C2fCIB,
             C2PSA,
+
+            QC2f,
+            QC3k2,
+            QC2PSA
         }
     )
     for i, (f, n, m, args, kwargs) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
@@ -1049,6 +1072,10 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
                 legacy = False
                 if scale in "mlx":
                     args[3] = True
+            if m is QC3k2:  # for M/L/X sizes
+                legacy = False
+                if scale in "mlx":
+                    args[3] = True
         elif m is AIFI:
             args = [ch[f], *args]
         elif m in frozenset({HGStem, HGBlock}):
@@ -1063,7 +1090,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
             args = [ch[f]]
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
-        elif m in frozenset({Detect, WorldDetect, Segment, Pose, OBB, ImagePoolingAttn, v10Detect}):
+        elif m in frozenset({Detect, WorldDetect, Segment, Pose, OBB, ImagePoolingAttn, v10Detect, QuantDetect}):
             args.append([ch[x] for x in f])
             if m is Segment:
                 args[2] = make_divisible(min(args[2], max_channels) * width, 8)
@@ -1084,7 +1111,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         else:
             c2 = ch[f]
 
-        if m in {QuantConv}:
+        if m in {QuantConv, QuantSPPF,  QuantBottleneck, QC2PSA, QC2f, QC3k2, QuantDetect}:
             for k in ["weight_quant", "act_quant", "bias_quant", "output_quant","input_quant"]:
                 if k in kwargs:
                     kwargs[k] = globals()[kwargs[k]] if isinstance(kwargs[k], str) else kwargs[k]

@@ -12,7 +12,18 @@ import  torch.nn as nn
 
 
 __all__ = (
-
+    "QC3",
+    "QC3k",
+    "QC2f",
+    "QC3k2",
+    "QuantSPPF",
+    "QuantAttention",
+    "QPSABlock",
+    "QuantBottleneck",
+    "QC2PSA",
+    "QDWConv",
+    "QuantDFL",
+    "QuantDetect",
     "QuantConv",
     "Uint8ActPerTensorPoT",
     "Int8ActPerTensorPoT",
@@ -158,7 +169,7 @@ class QC3k2(QC2f):
             QC3k(self.c, self.c, 2, shortcut, g,**kwargs) if c3k else QuantBottleneck(self.c, self.c, shortcut, g,**kwargs) for _ in range(n)
         )
 
-class SPPF(nn.Module):
+class QuantSPPF(nn.Module):
     """Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher."""
 
     def __init__(self, c1, c2, k=5,**kwargs):

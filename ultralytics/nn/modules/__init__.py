@@ -93,6 +93,18 @@ from .quant_modules import (
     Uint8ActPerTensorPoT,
     Int8ActPerTensorPoT,
     Int8WeightPerChannelPoT,
+    QuantDetect,
+    QuantSPPF,
+    QuantBottleneck,
+    QuantDFL,
+    QuantAttention,
+    QC2f,
+    QC3,
+    QC3k,
+    QC3k2,
+    QDWConv,
+    QPSABlock,
+    QC2PSA,
 )
 
 
@@ -172,4 +184,17 @@ __all__ = (
     "Uint8ActPerTensorPoT",
     "Int8ActPerTensorPoT",
     "Int8WeightPerChannelPoT",
+    "QuantDetect",
+    "QuantSPPF",
+    "QuantBottleneck",
+    "QuantDFL",
+    "QuantAttention",
+    "QC2f",
+    "QC3",
+    "QC3k",
+    "QC3k2",
+    "QDWConv",
+    "QPSABlock",
+    "QC2PSA",
+
 )
