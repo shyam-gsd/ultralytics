@@ -1041,7 +1041,13 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
             QC2PSA
         }
     )
-    for i, (f, n, m, args, kwargs) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
+
+    tmp_var = d["backbone"] + d["head"]
+    if len(tmp_var[0]) == 4:
+        for i, (f, n, m, args) in enumerate(tmp_var):
+            tmp_var[i] = (f, n, m, args, {})
+
+    for i, (f, n, m, args, kwargs) in enumerate(tmp_var):  # from, number, module, args
         m = (
             getattr(qnn, m[4:])
             if "qnn." in m
