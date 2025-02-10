@@ -310,7 +310,7 @@ class QC2PSA(nn.Module):
 
         self.m = nn.Sequential(*(QPSABlock(self.c, attn_ratio=0.5, num_heads=self.c // 64,**kwargs) for _ in range(n)))
         self.requantize = qnn.QuantIdentity(return_quant_tensor=True, act_quant=Int8ActPerTensorPoT, bit_width=6)
-        self.dequantize = qnn.QuantIdentity(input_quant=None)
+        self.dequantize = qnn.QuantIdentity(act_quant=None)
     def forward(self, x):
         """Processes the input tensor 'x' through a series of PSA blocks and returns the transformed tensor."""
         a, b = self.dequantize(self.cv1(x)).split((self.c, self.c), dim=1)
@@ -429,13 +429,15 @@ class QuantDetect(nn.Module):
             self.one2one_cv2 = copy.deepcopy(self.cv2)
             self.one2one_cv3 = copy.deepcopy(self.cv3)
 
+        self.requantize = qnn.QuantIdentity(return_quant_tensor=True, act_quant=Int8ActPerTensorPoT, bit_width=6)
+
     def forward(self, x):
         """Concatenates and returns predicted bounding boxes and class probabilities."""
         if self.end2end:
             return self.forward_end2end(x)
 
         for i in range(self.nl):
-            x[i] = torch.cat((self.cv2[i](x[i]), self.cv3[i](x[i])), 1)
+            x[i] = torch.cat((self.requantize(self.cv2[i](x[i])), self.requantize(self.cv3[i](x[i]))), 1)
         if self.training or isinstance(x[0], torch.fx.Proxy):  # Training path
             return x
         y = self._inference(x)
