@@ -79,14 +79,6 @@ class QuantConv(nn.Module):
 
         return self.act(self.bn(self.conv(x)))
 
-    def toggle_quantize(self, quantize):
-        if quantize:
-            self.conv.weight_quant = self.weight_quant
-            self.conv.weight_bit_width = self.weight_bit_width
-
-            self.act.act_quant = self.act_quant
-            self.act.bit_width = self.bit_width
-
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
         return self.act(self.conv(x))
@@ -102,10 +94,11 @@ class QuantBottleneck(nn.Module):
         self.cv1 = QuantConv(c1, c_, k[0], 1,**kwargs)
         self.cv2 = QuantConv(c_, c2, k[1], 1, g=g,**kwargs)
         self.add = shortcut and c1 == c2
+        self.requantize = qnn.QuantIdentity(return_quant_tensor=True,act_quant=Int8ActPerTensorPoT,bit_width= 6)
 
     def forward(self, x):
         """Applies the YOLO FPN to input data."""
-        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+        return self.requantize(x) + self.requantize(self.cv2(self.cv1(x))) if self.add else self.requantize(self.cv2(self.cv1(x)))
 
 class QC3(nn.Module):
     """CSP Bottleneck with 3 convolutions."""
@@ -118,10 +111,10 @@ class QC3(nn.Module):
         self.cv2 = QuantConv(c1, c_, 1, 1,**kwargs)
         self.cv3 = QuantConv(2 * c_, c2, 1,**kwargs)  # optional act=FReLU(c2)
         self.m = nn.Sequential(*(QuantBottleneck(c_, c_, shortcut, g, k=((1, 1), (3, 3)), e=1.0,**kwargs) for _ in range(n)))
-
+        self.requantize = qnn.QuantIdentity(return_quant_tensor=True, act_quant=Int8ActPerTensorPoT, bit_width=6)
     def forward(self, x):
         """Forward pass through the CSP bottleneck with 2 convolutions."""
-        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
+        return self.cv3(torch.cat((self.requantize(self.m(self.cv1(x))), self.requantize(self.cv2(x))), 1))
 
 class QC3k(QC3):
     """C3k is a CSP bottleneck module with customizable kernel sizes for feature extraction in neural networks."""
@@ -143,12 +136,13 @@ class QC2f(nn.Module):
         self.cv1 = QuantConv(c1, 2 * self.c, 1, 1,**kwargs)
         self.cv2 = QuantConv((2 + n) * self.c, c2, 1,**kwargs)  # optional act=FReLU(c2)
         self.m = nn.ModuleList(QuantBottleneck(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0,**kwargs) for _ in range(n))
+        self.requantize = qnn.QuantIdentity(return_quant_tensor=True, act_quant=Int8ActPerTensorPoT, bit_width=6)
 
     def forward(self, x):
         """Forward pass through C2f layer."""
         chunks = self.cv1(x).chunk(2, 1)
-        y = list(chunks[i] for i in range(2))
-        y.extend(m(y[-1]) for m in self.m)
+        y = list(self.requantize(chunks[i]) for i in range(2))
+        y.extend(self.requantize(m(y[-1])) for m in self.m)
         return self.cv2(torch.cat(y, 1))
 
     def forward_split(self, x):
