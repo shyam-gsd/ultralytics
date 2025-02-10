@@ -215,6 +215,8 @@ class QuantAttention(nn.Module):
         self.qkv = QuantConv(dim, h, 1, act=False,**kwargs)
         self.proj = QuantConv(dim, dim, 1, act=False,**kwargs)
         self.pe = QuantConv(dim, dim, 3, 1, g=dim, act=False,**kwargs)
+        self.requantize = qnn.QuantIdentity(return_quant_tensor=True, act_quant=Int8ActPerTensorPoT, bit_width=6)
+        self.dequantize = qnn.QuantIdentity(act_quant=None)
 
     def forward(self, x):
         """
@@ -228,14 +230,14 @@ class QuantAttention(nn.Module):
         """
         B, C, H, W = x.shape
         N = H * W
-        qkv = self.qkv(x)
+        qkv = self.dequantize(self.qkv(x))
         q, k, v = qkv.view(B, self.num_heads, self.key_dim * 2 + self.head_dim, N).split(
             [self.key_dim, self.key_dim, self.head_dim], dim=2
         )
 
         attn = (q.transpose(-2, -1) @ k) * self.scale
         attn = attn.softmax(dim=-1)
-        x = (v @ attn.transpose(-2, -1)).view(B, C, H, W) + self.pe(v.reshape(B, C, H, W))
+        x = self.requantize((v @ attn.transpose(-2, -1)).view(B, C, H, W)) + self.requantize(self.pe(v.reshape(B, C, H, W)))
         x = self.proj(x)
         return x
 
