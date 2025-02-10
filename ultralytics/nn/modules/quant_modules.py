@@ -94,7 +94,7 @@ class QuantBottleneck(nn.Module):
         self.cv1 = QuantConv(c1, c_, k[0], 1,**kwargs)
         self.cv2 = QuantConv(c_, c2, k[1], 1, g=g,**kwargs)
         self.add = shortcut and c1 == c2
-        self.requantize = qnn.QuantIdentity(return_quant_tensor=True,act_quant=Int8ActPerTensorPoT,bit_width= 6)
+        self.requantize = qnn.QuantIdentity(return_quant_tensor=True,input_quant=Int8ActPerTensorPoT,bit_width= 6)
 
     def forward(self, x):
         """Applies the YOLO FPN to input data."""
@@ -111,7 +111,7 @@ class QC3(nn.Module):
         self.cv2 = QuantConv(c1, c_, 1, 1,**kwargs)
         self.cv3 = QuantConv(2 * c_, c2, 1,**kwargs)  # optional act=FReLU(c2)
         self.m = nn.Sequential(*(QuantBottleneck(c_, c_, shortcut, g, k=((1, 1), (3, 3)), e=1.0,**kwargs) for _ in range(n)))
-        self.requantize = qnn.QuantIdentity(return_quant_tensor=True, act_quant=Int8ActPerTensorPoT, bit_width=6)
+        self.requantize = qnn.QuantIdentity(return_quant_tensor=True, input_quant=Int8ActPerTensorPoT, bit_width=6)
     def forward(self, x):
         """Forward pass through the CSP bottleneck with 2 convolutions."""
         return self.cv3(torch.cat((self.requantize(self.m(self.cv1(x))), self.requantize(self.cv2(x))), 1))
@@ -136,7 +136,7 @@ class QC2f(nn.Module):
         self.cv1 = QuantConv(c1, 2 * self.c, 1, 1,**kwargs)
         self.cv2 = QuantConv((2 + n) * self.c, c2, 1,**kwargs)  # optional act=FReLU(c2)
         self.m = nn.ModuleList(QuantBottleneck(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0,**kwargs) for _ in range(n))
-        self.requantize = qnn.QuantIdentity(return_quant_tensor=True, act_quant=Int8ActPerTensorPoT, bit_width=6)
+        self.requantize = qnn.QuantIdentity(return_quant_tensor=True, input_quant=Int8ActPerTensorPoT, bit_width=6)
 
     def forward(self, x):
         """Forward pass through C2f layer."""
@@ -309,7 +309,8 @@ class QC2PSA(nn.Module):
         self.cv2 = QuantConv(2 * self.c, c1, 1,**kwargs)
 
         self.m = nn.Sequential(*(QPSABlock(self.c, attn_ratio=0.5, num_heads=self.c // 64,**kwargs) for _ in range(n)))
-
+        self.requantize = qnn.QuantIdentity(return_quant_tensor=True, input_quant=Int8ActPerTensorPoT, bit_width=6)
+        self.dequantize = qnn.QuantIdentity(input_quant=None)
     def forward(self, x):
         """Processes the input tensor 'x' through a series of PSA blocks and returns the transformed tensor."""
         a, b = self.cv1(x).split((self.c, self.c), dim=1)
