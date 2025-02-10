@@ -11,6 +11,7 @@ import thop
 import torch
 import torch.nn as nn
 
+from brevitas.nn import QuantCat
 from ultralytics.nn.modules import (
     AIFI,
     C1,
@@ -1095,6 +1096,8 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         elif m is nn.BatchNorm2d:
             args = [ch[f]]
         elif m is Concat:
+            c2 = sum(ch[x] for x in f)
+        elif m is QuantCat:
             c2 = sum(ch[x] for x in f)
         elif m in frozenset({Detect, WorldDetect, Segment, Pose, OBB, ImagePoolingAttn, v10Detect, QuantDetect}):
             args.append([ch[x] for x in f])
