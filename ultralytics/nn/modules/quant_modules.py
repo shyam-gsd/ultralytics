@@ -432,6 +432,7 @@ class QuantDetect(nn.Module):
             self.one2one_cv3 = copy.deepcopy(self.cv3)
 
         self.requantize = qnn.QuantIdentity(return_quant_tensor=True, act_quant=Int8ActPerTensorPoT, bit_width=6)
+        self.dequantize = qnn.QuantIdentity(act_quant=None)
 
     def forward(self, x):
         """Concatenates and returns predicted bounding boxes and class probabilities."""
@@ -439,7 +440,7 @@ class QuantDetect(nn.Module):
             return self.forward_end2end(x)
 
         for i in range(self.nl):
-            x[i] = torch.cat((self.requantize(self.cv2[i](x[i])), self.requantize(self.cv3[i](x[i]))), 1)
+            x[i] = self.dequantize(torch.cat((self.requantize(self.cv2[i](x[i])), self.requantize(self.cv3[i](x[i]))), 1))
         if self.training or isinstance(x[0], torch.fx.Proxy):  # Training path
             return x
         y = self._inference(x)
