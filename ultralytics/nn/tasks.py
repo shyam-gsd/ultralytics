@@ -1120,7 +1120,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         else:
             c2 = ch[f]
 
-        if m in {QuantConv, QuantSPPF,  QuantBottleneck, QC2PSA, QC2f, QC3k2, QuantDetect}:
+        if m in {QuantConv, QuantSPPF,  QuantBottleneck, QC2PSA, QC2f, QC3k2, QuantDetect, QuantCat}:
             for k in ["weight_quant", "act_quant", "bias_quant", "output_quant","input_quant"]:
                 if k in kwargs:
                     kwargs[k] = globals()[kwargs[k]] if isinstance(kwargs[k], str) else kwargs[k]
