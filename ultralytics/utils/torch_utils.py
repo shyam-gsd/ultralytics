@@ -18,6 +18,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ultralytics.nn.modules import QuantConv, QDWConv
 from ultralytics.utils import (
     DEFAULT_CFG_DICT,
     DEFAULT_CFG_KEYS,
@@ -30,6 +31,7 @@ from ultralytics.utils import (
     colorstr,
 )
 from ultralytics.utils.checks import check_version
+import brevitas.nn as qnn
 
 # Version checks (all default to version>=min_version)
 TORCH_1_9 = check_version(torch.__version__, "1.9.0")
@@ -239,6 +241,19 @@ def fuse_conv_and_bn(conv, bn):
     """Fuse Conv2d() and BatchNorm2d() layers https://tehnokv.com/posts/fusing-batchnorm-and-conv/."""
     fusedconv = (
         nn.Conv2d(
+            conv.in_channels,
+            conv.out_channels,
+            kernel_size=conv.kernel_size,
+            stride=conv.stride,
+            padding=conv.padding,
+            dilation=conv.dilation,
+            groups=conv.groups,
+            bias=True,
+        )
+        .requires_grad_(False)
+        .to(conv.weight.device)
+    ) if conv not in {QuantConv, QDWConv} else (
+        qnn.QuantConv2d(
             conv.in_channels,
             conv.out_channels,
             kernel_size=conv.kernel_size,
