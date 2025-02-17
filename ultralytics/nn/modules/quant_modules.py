@@ -1,7 +1,11 @@
 import copy
 import math
+from typing import Union
 
 import torch
+from torch import Tensor
+from torch.nn import UpsamplingNearest2d
+from torch.nn.functional import interpolate
 
 import brevitas.nn as qnn
 import  brevitas.quant as quant
@@ -28,9 +32,11 @@ __all__ = (
     "Uint8ActPerTensorPoT",
     "Int8ActPerTensorPoT",
     "Int8WeightPerChannelPoT",
-
+    "QuantUpsamplingNearest2d"
 )
 
+from brevitas.nn.mixin import QuantLayerMixin
+from brevitas.quant_tensor import QuantTensor
 from ultralytics.utils.tal import make_anchors, dist2bbox
 
 
@@ -543,3 +549,27 @@ class QuantDetect(nn.Module):
         scores, index = scores.flatten(1).topk(min(max_det, anchors))
         i = torch.arange(batch_size)[..., None]  # batch indices
         return torch.cat([boxes[i, index // nc], scores[..., None], (index % nc)[..., None].float()], dim=-1)
+
+class QuantUpsamplingNearest2d(QuantLayerMixin, UpsamplingNearest2d):
+
+    def __init__(self, size=None, scale_factor=None, return_quant_tensor: bool = True):
+        UpsamplingNearest2d.__init__(self, size=size, scale_factor=scale_factor)
+        QuantLayerMixin.__init__(self, return_quant_tensor)
+
+    @property
+    def channelwise_separable(self) -> bool:
+        return True
+
+    @property
+    def requires_export_handler(self):
+        return False
+
+    def forward(self, input: Union[Tensor, QuantTensor]):
+        x = self.unpack_input(input)
+        if self.export_mode:
+            out = self.export_handler(x.value)
+            self._set_global_is_quant_layer(False)
+            return out
+        y_value = interpolate(x.value, self.size, self.scale_factor, self.mode, self.align_corners)
+        y = x.set(value=y_value)
+        return self.pack_output(y)
