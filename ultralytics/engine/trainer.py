@@ -515,24 +515,27 @@ class BaseTrainer:
 
         # Serialize ckpt to a byte buffer once (faster than repeated torch.save() calls)
         buffer = io.BytesIO()
-        torch.save(
-            {
-                "epoch": self.epoch,
-                "best_fitness": self.best_fitness,
-                "model": None,  # resume and final checkpoints derive from EMA
-                "ema": deepcopy(self.ema.ema).half(),
-                "updates": self.ema.updates,
-                "optimizer": convert_optimizer_state_dict_to_fp16(deepcopy(self.optimizer.state_dict())),
-                "train_args": vars(self.args),  # save as dict
-                "train_metrics": {**self.metrics, **{"fitness": self.fitness}},
-                "train_results": self.read_results_csv(),
-                "date": datetime.now().isoformat(),
-                "version": __version__,
-                "license": "AGPL-3.0 (https://ultralytics.com/license)",
-                "docs": "https://docs.ultralytics.com",
-            },
-            buffer,
-        )
+        # torch.save(
+        #     {
+        #         "epoch": self.epoch,
+        #         "best_fitness": self.best_fitness,
+        #         "model": None,  # resume and final checkpoints derive from EMA
+        #         "ema": deepcopy(self.ema.ema).half(),
+        #         "updates": self.ema.updates,
+        #         "optimizer": convert_optimizer_state_dict_to_fp16(deepcopy(self.optimizer.state_dict())),
+        #         "train_args": vars(self.args),  # save as dict
+        #         "train_metrics": {**self.metrics, **{"fitness": self.fitness}},
+        #         "train_results": self.read_results_csv(),
+        #         "date": datetime.now().isoformat(),
+        #         "version": __version__,
+        #         "license": "AGPL-3.0 (https://ultralytics.com/license)",
+        #         "docs": "https://docs.ultralytics.com",
+        #     },
+        #     buffer,
+        # )
+
+        torch.save({"model": self.model.state_dict()}, buffer)
+
         serialized_ckpt = buffer.getvalue()  # get the serialized content to save
 
         # Save checkpoints
