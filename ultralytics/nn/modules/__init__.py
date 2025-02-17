@@ -104,7 +104,7 @@ from .quant_modules import (
     QC3k2,
     QDWConv,
     QPSABlock,
-    QC2PSA, QuantUpsamplingNearest2d,
+    QC2PSA
 )
 
 
@@ -196,5 +196,5 @@ __all__ = (
     "QDWConv",
     "QPSABlock",
     "QC2PSA",
-    "QuantUpsamplingNearest2d"
+
 )
