@@ -18,7 +18,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ultralytics.nn.modules import QuantConv, QDWConv
+
 from ultralytics.utils import (
     DEFAULT_CFG_DICT,
     DEFAULT_CFG_KEYS,
@@ -237,7 +237,7 @@ def time_sync():
     return time.time()
 
 
-def fuse_conv_and_bn(conv, bn):
+def fuse_conv_and_bn(conv, bn,is_quant=False):
     """Fuse Conv2d() and BatchNorm2d() layers https://tehnokv.com/posts/fusing-batchnorm-and-conv/."""
     fusedconv = (
         nn.Conv2d(
@@ -252,7 +252,7 @@ def fuse_conv_and_bn(conv, bn):
         )
         .requires_grad_(False)
         .to(conv.weight.device)
-    ) if conv not in {QuantConv, QDWConv} else (
+    ) if not is_quant else (
         qnn.QuantConv2d(
             conv.in_channels,
             conv.out_channels,
