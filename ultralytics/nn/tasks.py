@@ -80,7 +80,7 @@ from ultralytics.nn.modules import (
     QC3k,
     QuantDFL,
     QC2f,
-    QC3,
+    QC3, QuantUpsamplingNearest2d,
 
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, yaml_load
@@ -1125,7 +1125,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         else:
             c2 = ch[f]
 
-        if m in {QuantConv, QuantSPPF,  QuantBottleneck, QC2PSA, QC2f, QC3k2, QuantDetect, QuantCat}:
+        if m in {QuantConv, QuantSPPF,  QuantBottleneck, QC2PSA, QC2f, QC3k2, QuantDetect, QuantCat,QuantUpsamplingNearest2d}:
             for k in ["weight_quant", "act_quant", "bias_quant", "output_quant","input_quant"]:
                 if k in kwargs:
                     kwargs[k] = globals()[kwargs[k]] if isinstance(kwargs[k], str) else kwargs[k]

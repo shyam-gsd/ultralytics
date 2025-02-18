@@ -1,10 +1,16 @@
 import copy
 import math
+from abc import abstractmethod, ABCMeta
+from typing import Optional, Union
 
 import torch
+from torch import Tensor
+from torch.nn import UpsamplingNearest2d
+from torch.nn.functional import interpolate
 
 import brevitas.nn as qnn
 import  brevitas.quant as quant
+from brevitas import config
 from brevitas.core.function_wrapper import CeilSte
 from brevitas.inject.enum import RestrictValueType
 import  torch.nn as nn
@@ -28,6 +34,7 @@ __all__ = (
     "Uint8ActPerTensorPoT",
     "Int8ActPerTensorPoT",
     "Int8WeightPerChannelPoT",
+    "QuantUpsamplingNearest2d"
 
 )
 
@@ -546,3 +553,203 @@ class QuantDetect(nn.Module):
         i = torch.arange(batch_size)[..., None]  # batch indices
         return torch.cat([boxes[i, index // nc], scores[..., None], (index % nc)[..., None].float()], dim=-1)
 
+class ExportMixin(object):
+    __metaclass__ = ABCMeta
+
+    def __init__(self):
+        self._export_mode = False
+        self.export_debug_name = None
+        self.export_handler = None
+        self.export_input_debug = False
+        self.export_output_debug = False
+
+    @property
+    @abstractmethod
+    def requires_export_handler(self):
+        pass
+
+    @property
+    def export_mode(self):
+        return self._export_mode
+
+    @export_mode.setter
+    def export_mode(self, value):
+        if value and config.JIT_ENABLED:
+            raise RuntimeError(
+                "Export mode with BREVITAS_JIT is currently not supported. Save the model' "
+                "state_dict to a .pth, load it back with BREVITAS_JIT=0, and call export.")
+        if value and self.training:
+            raise RuntimeError("Can't enter export mode during training, only during inference")
+        if value and self.requires_export_handler and self.export_handler is None:
+            raise RuntimeError("Can't enable export mode on a layer without an export handler")
+        elif value and not self.requires_export_handler and self.export_handler is None:
+            return  # don't set export mode when it's not required and there is no handler
+        elif value and not self._export_mode and self.export_handler is not None:
+            self.export_handler.prepare_for_export(self)
+            self.export_handler.attach_debug_info(self)
+        elif not value and self.export_handler is not None:
+            self.export_handler = None
+        self._export_mode = value
+
+
+class _CachedIO:
+
+    def __init__(self, quant_tensor: QuantTensor, metadata_only: bool):
+        self.shape = quant_tensor.value.shape
+        if metadata_only:
+            self.quant_tensor = quant_tensor.set(value=None)
+        else:
+            self.quant_tensor = quant_tensor
+
+    @property
+    def scale(self):
+        return self.quant_tensor.scale
+
+    @property
+    def zero_point(self):
+        return self.quant_tensor.zero_point
+
+    @property
+    def bit_width(self):
+        return self.quant_tensor.bit_width
+
+    @property
+    def signed(self):
+        return self.quant_tensor.signed
+
+
+class QuantLayerMixin(ExportMixin):
+    __metaclass__ = ABCMeta
+
+    def __init__(
+            self,
+            return_quant_tensor: bool,
+            cache_inference_quant_inp: bool = False,
+            cache_inference_quant_out: bool = False,
+            cache_quant_io_metadata_only: bool = True):
+        ExportMixin.__init__(self)
+        self.accept_quant_tensor = True
+        self.return_quant_tensor = return_quant_tensor
+        self.cache_inference_quant_inp = cache_inference_quant_inp
+        self.cache_inference_quant_out = cache_inference_quant_out
+        self.cache_quant_io_metadata_only = cache_quant_io_metadata_only
+        self._cached_inp = None
+        self._cached_out = None
+
+    @property
+    @abstractmethod
+    def channelwise_separable(self) -> bool:
+        pass
+
+    @property
+    def is_quant_input_signed(self) -> Optional[bool]:  # tri-valued logic output
+        if self._cached_inp is not None:
+            return self._cached_inp.signed
+        else:
+            return None
+
+    def _set_global_is_quant_layer(self, value):
+        config._IS_INSIDE_QUANT_LAYER = value
+
+    def quant_input_scale(self):
+        if self._cached_inp is not None:
+            return self._cached_inp.scale
+        else:
+            return None
+
+    def quant_input_zero_point(self):
+        if self._cached_inp is not None:
+            return self._cached_inp.zero_point
+        else:
+            return None
+
+    def quant_input_bit_width(self):
+        if self._cached_inp is not None:
+            return self._cached_inp.bit_width
+        else:
+            return None
+
+    @property
+    def is_quant_output_signed(self) -> Optional[bool]:  # tri-valued logic output
+        if self._cached_out is not None:
+            return self._cached_out.signed
+        else:
+            return None
+
+    def quant_output_scale(self):
+        if self._cached_out is not None:
+            return self._cached_out.scale
+        else:
+            return None
+
+    def quant_output_zero_point(self):
+        if self._cached_out is not None:
+            return self._cached_out.zero_point
+        else:
+            return None
+
+    def quant_output_bit_width(self):
+        if self._cached_out is not None:
+            return self._cached_out.bit_width
+        else:
+            return None
+
+    def unpack_input(self, inp: Union[Tensor, QuantTensor]):
+        self._set_global_is_quant_layer(True)
+        # Hack to recognize a QuantTensor that has decayed to a tuple
+        # when used as input to tracing (e.g. during ONNX export)
+        if (torch._C._get_tracing_state() is not None and isinstance(inp, tuple) and
+                len(inp) == len(QuantTensor._fields) and all([isinstance(t, Tensor) for t in inp])):
+            inp = QuantTensor(*inp)
+        if isinstance(inp, QuantTensor):
+            # don't cache values during export pass
+            if not self.training and not self._export_mode and self.cache_inference_quant_inp:
+                cached_inp = _CachedIO(inp.detach(), self.cache_quant_io_metadata_only)
+                self._cached_inp = cached_inp
+        else:
+            inp = QuantTensor(inp, training=self.training)
+            if not self.training and self.cache_inference_quant_inp:
+                cached_inp = _CachedIO(inp.detach(), self.cache_quant_io_metadata_only)
+                self._cached_inp = cached_inp
+        # Remove any naming metadata to avoid dowmstream errors
+        # Avoid inplace operations on the input in case of forward hooks
+        if not torch._C._get_tracing_state():
+            inp = inp.set(value=inp.value.rename(None))
+        return inp
+
+    def pack_output(self, quant_output: QuantTensor):
+        if not self.training and self.cache_inference_quant_out:
+            self._cached_out = _CachedIO(quant_output.detach(), self.cache_quant_io_metadata_only)
+        self._set_global_is_quant_layer(False)
+        if self.return_quant_tensor:
+            return quant_output
+        else:
+            return quant_output.value
+
+
+class QuantUpsamplingNearest2d(QuantLayerMixin, UpsamplingNearest2d):
+
+    def __init__(self, size=None, scale_factor=None, return_quant_tensor: bool = True, **kwargs):
+        UpsamplingNearest2d.__init__(self, size=size, scale_factor=scale_factor)
+        QuantLayerMixin.__init__(self, return_quant_tensor)
+
+    @property
+    def channelwise_separable(self) -> bool:
+        return True
+
+    @property
+    def requires_export_handler(self):
+        return False
+
+    def toggle_quantize(self, quantize):
+        pass
+
+    def forward(self, input: Union[Tensor, QuantTensor]):
+        x = self.unpack_input(input)
+        if self.export_mode:
+            out = self.export_handler(x.value)
+            self._set_global_is_quant_layer(False)
+            return out
+        y_value = interpolate(x.value, self.size, self.scale_factor, self.mode, self.align_corners)
+        y = x.set(value=y_value)
+        return self.pack_output(y)
