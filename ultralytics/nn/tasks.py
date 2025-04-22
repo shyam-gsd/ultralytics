@@ -346,7 +346,7 @@ class DetectionModel(BaseModel):
 
         # Build strides
         m = self.model[-1]  # Detect()
-        if m in frozenset({Detect, QuantDetect}):  # includes all Detect subclasses like Segment, Pose, OBB, WorldDetect
+        if isinstance(m,Detect) or isinstance(m,QuantDetect):  # includes all Detect subclasses like Segment, Pose, OBB, WorldDetect
             s = 256  # 2x min stride
             m.inplace = self.inplace
 
