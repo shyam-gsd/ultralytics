@@ -933,10 +933,10 @@ def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
     """Loads a single model weights."""
     ckpt, weight = torch_safe_load(weight)  # load ckpt
     args = {**DEFAULT_CFG_DICT, **(ckpt.get("train_args", {}))}  # combine model and default args, preferring model args
-    model = BaseModel
+    model = BaseModel()
 
     state_dict = ckpt.get("ema") or ckpt["model"]
-    model.load_state_dict(state_dict)  # FP32 model
+    model.load_state_dict(state_dict=state_dict,strict=False)  # FP32 model
     model.to(device).float()  # load to device
 
     # if isinstance(model, OrderedDict):
