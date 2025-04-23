@@ -940,9 +940,10 @@ def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
     #model.to(device).float()  # load to device
 
     if isinstance(model, OrderedDict):
-        model = DetectionModel()
-        model.load_state_dict(state_dict=model, strict=False)  # FP32 model
-        model.to(device).float()  # load to device
+        nmodel = DetectionModel()
+        nmodel.load_state_dict(state_dict=model, strict=False)  # FP32 model
+        nmodel.to(device).float()  # load to device
+        model = nmodel
     else:
         model.to(device).float()
 
