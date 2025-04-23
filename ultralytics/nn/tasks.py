@@ -937,11 +937,13 @@ def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
 
     model = ckpt.get("ema") or ckpt["model"]
     #model.load_state_dict(state_dict=state_dict,strict=False)  # FP32 model
-    model.to(device).float()  # load to device
+    #model.to(device).float()  # load to device
 
-    # if isinstance(model, OrderedDict):
-    #     for t in model.values():
-    #         t.to(device).float()
+    if isinstance(model, OrderedDict):
+        for t in model.values():
+            t.to(device).float()
+    else:
+        model.to(device).float()
 
 
     # Model compatibility updates
