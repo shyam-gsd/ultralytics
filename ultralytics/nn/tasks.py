@@ -935,9 +935,11 @@ def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
     args = {**DEFAULT_CFG_DICT, **(ckpt.get("train_args", {}))}  # combine model and default args, preferring model args
     model = Ensemble()
 
+    model = (ckpt.get("ema") or ckpt["model"])  # FP32 model
 
-    model.load_state_dict(ckpt.get("ema") or ckpt["model"])  # FP32 model
-
+    if isinstance(model, OrderedDict):
+        for t in model.values():
+            t.to(device).float()
 
 
     # Model compatibility updates
