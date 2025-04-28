@@ -899,6 +899,7 @@ class Attention(nn.Module):
         self.qkv = Conv(dim, h, 1, act=False)
         self.proj = Conv(dim, dim, 1, act=False)
         self.pe = Conv(dim, dim, 3, 1, g=dim, act=False)
+        self.softapprox = SoftmaxApprox(100,[64],0.2)
 
     def forward(self, x):
         """
