@@ -1227,7 +1227,7 @@ class SoftmaxApprox(nn.Module):
         x_flat = x_flat.reshape(-1, self.input_dim)        # (..., input_dim)
         out_flat = self.feature_extractor(x_flat)          # same shape
         out = out_flat.view(*x_flat.shape[:-1], self.input_dim)
-        out = out.transpose(-1, self.axis)
+        out = out.transpose(-1, self.axis).reshape(*orig_shape)  # back to original shape
         return out
 
     def freeze(self):
