@@ -928,6 +928,7 @@ class Attention(nn.Module):
 
         attn = (q.transpose(-2, -1) @ k) * self.scale
         if N == self.softapprox.input_dim:
+            attn = torch.apply_along_axis( self.softapprox,-1, attn)
             attn = self.softapprox(attn)
         else:
             attn = attn.softmax(dim=-1)
