@@ -900,11 +900,11 @@ class Attention(nn.Module):
         self.proj = Conv(dim, dim, 1, act=False)
         self.pe = Conv(dim, dim, 3, 1, g=dim, act=False)
 
-        self.setupSoftmax(kwargs.get('input_dim', 100), kwargs.get('hidden_dims', [64]), kwargs.get('dropout', 0.2), kwargs.get('path', None))
+        self.setupSoftmax(kwargs.get('input_dim', 100), kwargs.get('hidden_dims', [64]), kwargs.get('dropout', 0.2), kwargs.get('path', None),-1)
 
 
-    def setupSoftmax(self, input_dim,hidden_dims, dropout,path):
-        self.softapprox = SoftmaxApprox(input_dim, hidden_dims, dropout)
+    def setupSoftmax(self, input_dim,hidden_dims, dropout,path,axis):
+        self.softapprox = SoftmaxApprox(input_dim, hidden_dims, dropout, axis)
         self.softapprox.load_state_dict(torch.load(path))
         self.softapprox.freeze()
 
@@ -1173,45 +1173,67 @@ class TorchVision(nn.Module):
 
 
 class Norm(nn.Module):
-    def __init__(self):
-        super(Norm, self).__init__()
+    """Normalize along a specified axis so that the sums over that axis = 1."""
+    def __init__(self, axis: int = -1, eps: float = 1e-8):
+        super().__init__()
+        self.axis = axis
+        self.eps = eps
 
-    def forward(self, x):
-        # Normalize manually so that each row sums to 1.
-        # A small epsilon is added to prevent division by zero.
-        x_sum = x.sum(dim=1, keepdim=True) + 1e-8
-        x = x / x_sum
-        return x
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # sum over the chosen axis, keep dimensions for broadcasting
+        x_sum = x.sum(dim=self.axis, keepdim=True).clamp_min(self.eps)
+        return x / x_sum
+
+
 class SoftmaxApprox(nn.Module):
-    def __init__(self, input_dim, hidden_dims, dropout_prob=0.2):
-        """
-        Args:
-            input_dim (int): Dimension of the input logit vector.
-            hidden_dims (list): List of integers specifying the hidden layer sizes.
-            dropout_prob (float): Dropout probability for all dropout layers.
-        """
-        super(SoftmaxApprox, self).__init__()
-        layers = []
+    """
+    A learned approximation to softmax, normalizing along `axis`.
+    """
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_dims: list[int],
+        dropout_prob: float = 0.2,
+        axis: int = -1
+    ):
+        super().__init__()
         self.input_dim = input_dim
+        self.axis = axis
+
+        # build feature extractor ending in a Norm(axis)
+        layers: list[nn.Module] = []
         in_dim = input_dim
-        # Create several blocks of [Dense -> BatchNorm -> ReLU -> Dropout]
         for h in hidden_dims:
-            layers.append(nn.Linear(in_dim, h))
-            layers.append(nn.BatchNorm1d(h))
-            layers.append(nn.ReLU())
-            layers.append(nn.Dropout(dropout_prob))
+            layers += [
+                nn.Linear(in_dim, h),
+                nn.BatchNorm1d(h),
+                nn.ReLU(),
+                nn.Dropout(dropout_prob)
+            ]
             in_dim = h
 
-        self.feature_extractor = nn.Sequential(*layers,nn.Linear(in_dim, input_dim),nn.ReLU(),Norm())
+        # final mapping back to input_dim, then normalize along axis
+        layers += [
+            nn.Linear(in_dim, input_dim),
+            nn.ReLU(),
+            Norm(axis=axis)
+        ]
+        self.feature_extractor = nn.Sequential(*layers)
 
-    def forward(self, x):
-        # Pass through the hidden blocks.
-        x = self.feature_extractor(x)
-        return x
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x can be any shape, but feature_extractor expects (batch, input_dim)
+        # so we flatten all dims except the one we normalize over
+        orig_shape = x.shape
+        x_flat = x.transpose(self.axis, -1)
+        x_flat = x_flat.reshape(-1, self.input_dim)        # (..., input_dim)
+        out_flat = self.feature_extractor(x_flat)          # same shape
+        out = out_flat.view(*x_flat.shape[:-1], self.input_dim)
+        out = out.transpose(-1, self.axis)
+        return out
 
     def freeze(self):
-        """
-        Freeze all parameters so they won't be updated during training.
-        """
-        for param in self.parameters():
-            param.requires_grad = False
+        for p in self.parameters():
+            p.requires_grad = False
+
+
+
