@@ -887,7 +887,7 @@ class Attention(nn.Module):
         pe (Conv): Convolutional layer for positional encoding.
     """
 
-    def __init__(self, dim, num_heads=8, attn_ratio=0.5):
+    def __init__(self, dim, num_heads=8, attn_ratio=0.5, **kwargs):
         """Initializes multi-head attention module with query, key, and value convolutions and positional encoding."""
         super().__init__()
         self.num_heads = num_heads
@@ -899,6 +899,8 @@ class Attention(nn.Module):
         self.qkv = Conv(dim, h, 1, act=False)
         self.proj = Conv(dim, dim, 1, act=False)
         self.pe = Conv(dim, dim, 3, 1, g=dim, act=False)
+
+        self.setupSoftmax(kwargs.get('input_dim', 100), kwargs.get('hidden_dims', [64]), kwargs.get('dropout', 0.2), kwargs.get('path', None))
 
 
     def setupSoftmax(self, input_dim,hidden_dims, dropout,path):
@@ -954,11 +956,11 @@ class PSABlock(nn.Module):
         >>> output_tensor = psablock(input_tensor)
     """
 
-    def __init__(self, c, attn_ratio=0.5, num_heads=4, shortcut=True) -> None:
+    def __init__(self, c, attn_ratio=0.5, num_heads=4, shortcut=True, **kwargs) -> None:
         """Initializes the PSABlock with attention and feed-forward layers for enhanced feature extraction."""
         super().__init__()
 
-        self.attn = Attention(c, attn_ratio=attn_ratio, num_heads=num_heads)
+        self.attn = Attention(c, attn_ratio=attn_ratio, num_heads=num_heads, **kwargs)
         self.ffn = nn.Sequential(Conv(c, c * 2, 1), Conv(c * 2, c, 1, act=False))
         self.add = shortcut
 
@@ -1037,7 +1039,7 @@ class C2PSA(nn.Module):
         >>> output_tensor = c2psa(input_tensor)
     """
 
-    def __init__(self, c1, c2, n=1, e=0.5):
+    def __init__(self, c1, c2, n=1, e=0.5, **kwargs):
         """Initializes the C2PSA module with specified input/output channels, number of layers, and expansion ratio."""
         super().__init__()
         assert c1 == c2
@@ -1045,7 +1047,7 @@ class C2PSA(nn.Module):
         self.cv1 = Conv(c1, 2 * self.c, 1, 1)
         self.cv2 = Conv(2 * self.c, c1, 1)
 
-        self.m = nn.Sequential(*(PSABlock(self.c, attn_ratio=0.5, num_heads=self.c // 64) for _ in range(n)))
+        self.m = nn.Sequential(*(PSABlock(self.c, attn_ratio=0.5, num_heads=self.c // 64, **kwargs) for _ in range(n)))
 
     def forward(self, x):
         """Processes the input tensor 'x' through a series of PSA blocks and returns the transformed tensor."""
