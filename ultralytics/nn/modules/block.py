@@ -927,8 +927,10 @@ class Attention(nn.Module):
         )
 
         attn = (q.transpose(-2, -1) @ k) * self.scale
-        #attn = attn.softmax(dim=-1)
-        attn = self.softapprox(attn)
+        if N == self.softapprox.input_dim:
+            attn = self.softapprox(attn)
+        else:
+            attn = attn.softmax(dim=-1)
         x = (v @ attn.transpose(-2, -1)).view(B, C, H, W) + self.pe(v.reshape(B, C, H, W))
         x = self.proj(x)
         return x
@@ -1189,6 +1191,7 @@ class SoftmaxApprox(nn.Module):
         """
         super(SoftmaxApprox, self).__init__()
         layers = []
+        self.input_dim = input_dim
         in_dim = input_dim
         # Create several blocks of [Dense -> BatchNorm -> ReLU -> Dropout]
         for h in hidden_dims:
