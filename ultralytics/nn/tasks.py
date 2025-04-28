@@ -1065,7 +1065,8 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
     tmp_var = d["backbone"] + d["head"]
     for i, t in enumerate(tmp_var):
         if len(t) == 4:
-            t[i] = (t[0], t[1], t[2], t[3], {})
+            t = (t[0], t[1], t[2], t[3], {})
+            tmp_var[i] = t
 
     for i, (f, n, m, args, kwargs) in enumerate(tmp_var):  # from, number, module, args
         m = (
