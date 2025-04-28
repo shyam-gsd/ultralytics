@@ -899,7 +899,13 @@ class Attention(nn.Module):
         self.qkv = Conv(dim, h, 1, act=False)
         self.proj = Conv(dim, dim, 1, act=False)
         self.pe = Conv(dim, dim, 3, 1, g=dim, act=False)
-        self.softapprox = SoftmaxApprox(100,[64],0.2)
+
+
+    def setupSoftmax(self, input_dim,hidden_dims, dropout,path):
+        self.softapprox = SoftmaxApprox(input_dim, hidden_dims, dropout)
+        self.softapprox.load_state_dict(torch.load(path))
+        self.softapprox.freeze()
+
 
     def forward(self, x):
         """
