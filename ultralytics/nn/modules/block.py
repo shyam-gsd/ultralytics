@@ -1220,14 +1220,35 @@ class SoftmaxApprox(nn.Module):
         self.feature_extractor = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x can be any shape, but feature_extractor expects (batch, input_dim)
-        # so we flatten all dims except the one we normalize over
         orig_shape = x.shape
+        # bring normalization axis to last dimension
         x_flat = x.transpose(self.axis, -1)
-        x_flat = x_flat.reshape(-1, self.input_dim)        # (..., input_dim)
-        out_flat = self.feature_extractor(x_flat)          # same shape
-        out = out_flat.view(*x_flat.shape[:-1], self.input_dim)
-        out = out.transpose(-1, self.axis).reshape(*orig_shape)  # back to original shape
+        curr_dim = x_flat.shape[-1]
+        # flatten all dims except last
+        x_flat = x_flat.reshape(-1, curr_dim)
+
+        # ensure we don't exceed expected dimension
+        if curr_dim > self.input_dim:
+            raise ValueError(
+                f"Size along axis {self.axis} ({curr_dim}) exceeds input_dim ({self.input_dim})."
+            )
+
+        # pad with -100 if needed
+        if curr_dim < self.input_dim:
+            pad_size = self.input_dim - curr_dim
+            pad = x_flat.new_full((x_flat.shape[0], pad_size), -100.)
+            x_flat = torch.cat([x_flat, pad], dim=-1)
+
+        # apply feature extractor
+        out_flat = self.feature_extractor(x_flat)
+
+        # remove padded values
+        if curr_dim < self.input_dim:
+            out_flat = out_flat[:, :curr_dim]
+
+        # reshape back to original shape
+        out = out_flat.view(*x_flat.shape[:-1], curr_dim)
+        out = out.transpose(-1, self.axis).reshape(*orig_shape)
         return out
 
     def freeze(self):
