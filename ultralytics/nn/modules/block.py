@@ -927,7 +927,7 @@ class Attention(nn.Module):
         )
 
         attn = (q.transpose(-2, -1) @ k) * self.scale
-        if N == self.softapprox.input_dim:
+        if False:#N == self.softapprox.input_dim
             attn = self.softapprox(attn)
         else:
             attn = attn.softmax(dim=-1)
