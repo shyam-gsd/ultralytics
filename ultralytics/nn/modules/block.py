@@ -927,7 +927,7 @@ class Attention(nn.Module):
         )
 
         attn = (q.transpose(-2, -1) @ k) * self.scale
-        if False:#N == self.softapprox.input_dim
+        if N == self.softapprox.input_dim:
             attn = self.softapprox(attn)
         else:
             attn = attn.softmax(dim=-1)
@@ -1202,22 +1202,24 @@ class SoftmaxApprox(nn.Module):
         # build feature extractor ending in a Norm(axis)
         layers: list[nn.Module] = []
         in_dim = input_dim
-        for h in hidden_dims:
-            layers += [
-                nn.Linear(in_dim, h),
-                nn.BatchNorm1d(h),
-                nn.ReLU(),
-                nn.Dropout(dropout_prob)
-            ]
-            in_dim = h
+        # for h in hidden_dims:
+        #     layers += [
+        #         nn.Linear(in_dim, h),
+        #         nn.BatchNorm1d(h),
+        #         nn.ReLU(),
+        #         nn.Dropout(dropout_prob)
+        #     ]
+        #     in_dim = h
+        #
+        # # final mapping back to input_dim, then normalize along axis
+        # layers += [
+        #     nn.Linear(in_dim, input_dim),
+        #     nn.ReLU(),
+        #     Norm(axis=axis)
+        # ]
+        # self.feature_extractor = nn.Sequential(*layers)
 
-        # final mapping back to input_dim, then normalize along axis
-        layers += [
-            nn.Linear(in_dim, input_dim),
-            nn.ReLU(),
-            Norm(axis=axis)
-        ]
-        self.feature_extractor = nn.Sequential(*layers)
+        self.exp_approx = ExpApprox(input_dim, hidden_dims, dropout_prob=dropout_prob)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         orig_shape = x.shape
@@ -1228,26 +1230,32 @@ class SoftmaxApprox(nn.Module):
         x_flat = x_flat.reshape(-1, curr_dim)
 
         # ensure we don't exceed expected dimension
-        if curr_dim > self.input_dim:
-            raise ValueError(
-                f"Size along axis {self.axis} ({curr_dim}) exceeds input_dim ({self.input_dim})."
-            )
+        # if curr_dim > self.input_dim:
+        #     raise ValueError(
+        #         f"Size along axis {self.axis} ({curr_dim}) exceeds input_dim ({self.input_dim})."
+        #     )
 
-        # pad with -100 if needed
-        if curr_dim < self.input_dim:
-            pad_size = self.input_dim - curr_dim
-            pad = x_flat.new_full((x_flat.shape[0], pad_size), -100.)
-            x_flat = torch.cat([x_flat, pad], dim=-1)
+        # # pad with -100 if needed
+        # if curr_dim < self.input_dim:
+        #     pad_size = self.input_dim - curr_dim
+        #     pad = x_flat.new_full((x_flat.shape[0], pad_size), -100.)
+        #     x_flat = torch.cat([x_flat, pad], dim=-1)
 
         # apply feature extractor
-        out_flat = self.feature_extractor(x_flat)
+        #out_flat = self.feature_extractor(x_flat)
+
+        for i in range(x_flat.shape[0]):
+            x_flat[i,:].apply_(lambda x: self.exp_approx(x))
+            x_sum = x_flat[i,:].sum()
+            x_flat[i,:] = x_flat[i,:] / x_sum
+
 
         # remove padded values
-        if curr_dim < self.input_dim:
-            out_flat = out_flat[:, :curr_dim]
+        # if curr_dim < self.input_dim:
+        #     out_flat = out_flat[:, :curr_dim]
 
         # reshape back to original shape
-        out = out_flat.view(*x_flat.shape[:-1], curr_dim)
+        out = x_flat.view(*x_flat.shape[:-1], curr_dim)
         out = out.transpose(-1, self.axis).reshape(*orig_shape)
         return out
 
@@ -1255,5 +1263,42 @@ class SoftmaxApprox(nn.Module):
         for p in self.parameters():
             p.requires_grad = False
 
+class ExpApprox(nn.Module):
+    def __init__(self, input_dim, hidden_dims, dropout_prob=0.2):
+        """
+        Args:
+            input_dim (int): Dimension of the input logit vector.
+            hidden_dims (list): List of integers specifying the hidden layer sizes.
+            dropout_prob (float): Dropout probability for all dropout layers.
+        """
+        super(ExpApprox, self).__init__()
+        layers = []
+        in_dim = input_dim
+        # Create several blocks of [Dense -> BatchNorm -> ReLU -> Dropout]
+
+
+
+
+        for h in hidden_dims:
+            layers.append(nn.Linear(in_dim, h))
+            layers.append(nn.BatchNorm1d(h))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(dropout_prob))
+            in_dim = h
+
+        self.feature_extractor = nn.Sequential(*layers,nn.Linear(in_dim,input_dim ))
+
+    def forward(self, x):
+        # Pass through the hidden blocks.
+
+        x = self.feature_extractor(x)
+        return x
+
+    def freeze(self):
+        """
+        Freeze all parameters so they won't be updated during training.
+        """
+        for param in self.parameters():
+            param.requires_grad = False
 
 
