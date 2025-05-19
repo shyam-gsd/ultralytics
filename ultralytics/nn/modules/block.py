@@ -905,8 +905,8 @@ class Attention(nn.Module):
 
     def setupSoftmax(self, input_dim,hidden_dims, dropout,path,axis):
         self.softapprox = SoftmaxApprox(input_dim, hidden_dims, dropout, axis)
-        self.softapprox.load_state_dict(torch.load(path))
-        self.softapprox.freeze()
+        self.softapprox.exp_approx.load_state_dict(torch.load(path))
+        self.softapprox.exp_approx.freeze()
 
 
     def forward(self, x):
